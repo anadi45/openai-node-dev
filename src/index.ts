@@ -110,6 +110,121 @@ app.get('/api/models', async (req, res) => {
   }
 });
 
+// OpenAI single text embedding route
+app.post('/api/embedding', async (req, res) => {
+  try {
+    const { text, model = 'text-embedding-ada-002' } = req.body;
+    
+    if (!text) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+
+    const embedding = await openai.embeddings.create({
+      model,
+      input: text,
+    });
+
+    res.json({
+      embedding,
+    });
+  } catch (error) {
+    console.error('OpenAI API error:', error);
+    res.status(500).json({ 
+      error: 'Failed to get embedding from OpenAI',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// OpenAI batch embeddings route
+app.post('/api/embeddings/batch', async (req, res) => {
+  try {
+    const { texts, model = 'text-embedding-ada-002' } = req.body;
+    
+    if (!texts || !Array.isArray(texts) || texts.length === 0) {
+      return res.status(400).json({ error: 'Texts array is required and must not be empty' });
+    }
+
+    if (texts.length > 2048) {
+      return res.status(400).json({ error: 'Maximum 2048 texts allowed per batch' });
+    }
+
+    const embeddings = await openai.embeddings.create({
+      model,
+      input: texts,
+    });
+
+    res.json({
+      embeddings: embeddings.data.map((item, index) => ({
+        index,
+        text: texts[index],
+        embedding: item.embedding,
+        dimensions: item.embedding.length,
+      })),
+      usage: embeddings.usage,
+      model: embeddings.model,
+      total_embeddings: embeddings.data.length,
+    });
+  } catch (error) {
+    console.error('OpenAI API error:', error);
+    res.status(500).json({ 
+      error: 'Failed to get batch embeddings from OpenAI',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// OpenAI embedding similarity comparison route
+app.post('/api/embeddings/similarity', async (req, res) => {
+  try {
+    const { text1, text2, model = 'text-embedding-ada-002' } = req.body;
+    
+    if (!text1 || !text2) {
+      return res.status(400).json({ error: 'Both text1 and text2 are required' });
+    }
+
+    // Get embeddings for both texts
+    const embeddings = await openai.embeddings.create({
+      model,
+      input: [text1, text2],
+    });
+
+    const embedding1 = embeddings.data[0].embedding;
+    const embedding2 = embeddings.data[1].embedding;
+
+    // Calculate cosine similarity
+    const dotProduct = embedding1.reduce((sum, a, i) => sum + a * embedding2[i], 0);
+    const magnitude1 = Math.sqrt(embedding1.reduce((sum, a) => sum + a * a, 0));
+    const magnitude2 = Math.sqrt(embedding2.reduce((sum, a) => sum + a * a, 0));
+    const cosineSimilarity = dotProduct / (magnitude1 * magnitude2);
+
+    res.json({
+      text1,
+      text2,
+      cosine_similarity: cosineSimilarity,
+      similarity_percentage: (cosineSimilarity * 100).toFixed(2) + '%',
+      embeddings: {
+        text1: {
+          embedding: embedding1,
+          dimensions: embedding1.length,
+        },
+        text2: {
+          embedding: embedding2,
+          dimensions: embedding2.length,
+        },
+      },
+      usage: embeddings.usage,
+      model: embeddings.model,
+    });
+  } catch (error) {
+    console.error('OpenAI API error:', error);
+    res.status(500).json({ 
+      error: 'Failed to calculate embedding similarity',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
@@ -118,6 +233,9 @@ app.listen(PORT, () => {
   console.log(`   POST /api/chat       - Chat completion`);
   console.log(`   POST /api/completion - Text completion`);
   console.log(`   GET  /api/models     - List OpenAI models`);
+  console.log(`   POST /api/embedding  - Single text embedding`);
+  console.log(`   POST /api/embeddings/batch - Batch text embeddings`);
+  console.log(`   POST /api/embeddings/similarity - Compare embedding similarity`);
   
   if (!process.env.OPENAI_API_KEY) {
     console.warn('⚠️  OPENAI_API_KEY not found in environment variables');
