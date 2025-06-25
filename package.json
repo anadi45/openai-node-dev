@@ -14,7 +14,7 @@
   "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
-    "openai": "^4.24.7",
+    "openai": "file:/Users/ranjeetbaraik/Desktop/os/openai-node",
     "dotenv": "^16.3.1",
     "cors": "^2.8.5"
   },
